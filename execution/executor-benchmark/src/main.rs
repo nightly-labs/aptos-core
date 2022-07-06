@@ -119,6 +119,7 @@ enum Command {
 }
 
 fn main() {
+    aptos_logger::Logger::new().init();
     let _mp = MetricsPusher::start();
     let opt = Opt::from_args();
 
