@@ -1,0 +1,48 @@
+macos_instance:
+  image: ghcr.io/cirruslabs/macos-monterey-xcode:14-beta-3
+
+build_mac_images_task:
+  env:
+    # CARGO_INCREMENTAL: "0"
+    CIRRUS_SHELL: bash
+    # PATH: /root/.cargo/bin:$PATH
+  docker_install_script: |
+    brew install --cask docker
+    sudo /Applications/Docker.app/Contents/MacOS/Docker --unattended --install-privileged-components
+    open -a /Applications/Docker.app --args --unattended --accept-license
+    sleep 60
+    # while ! /Applications/Docker.app/Contents/Resources/bin/docker info &>/dev/null; do sleep 1; done
+    /Applications/Docker.app/Contents/Resources/bin/docker info
+    docker --version
+  build_script: docker/docker-bake-rust-all.sh
+    # apt-get update
+    # apt-get install gnupg lsb-release build-essential ca-certificates clang curl git libpq-dev libssl-dev pkg-config --no-install-recommends --assume-yes
+
+    # mkdir -p /etc/apt/keyrings
+    # curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    # echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    # apt-get update -y
+    # apt-get install docker-ce docker-ce-cli containerd.io docker-compose-plugin -y
+    # curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain none
+  # install_script: |
+  #   apt-get update
+  #   apt-get install build-essential ca-certificates clang curl git libpq-dev libssl-dev pkg-config --no-install-recommends --assume-yes
+
+  #   # mkdir -p /etc/apt/keyrings
+  #   # curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  #   # echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+  #   # apt-get update -y
+  #   # apt-get install docker-ce docker-ce-cli containerd.io docker-compose-plugin -y
+  #   # curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain none
+  # prepare_script: docker run --detach -p 5432:5432 cimg/postgres:14.2
+  # registry_cache:
+  #   folder: $CARGO_HOME/registry
+  #   fingerprint_script: cat Cargo.lock
+  # target_cache:
+  #   folder: target
+  #   fingerprint_script:
+  #     - rustc --version
+  #     - cat Cargo.lock
+  # test_script: |
+  #   cargo nextest --nextest-profile ci --test-threads=16 --unit --exclude backup-cli
+ 
