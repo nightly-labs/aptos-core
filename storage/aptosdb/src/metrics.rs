@@ -84,6 +84,18 @@ pub static PRUNER_LEAST_READABLE_VERSION: Lazy<IntGaugeVec> = Lazy::new(|| {
     .unwrap()
 });
 
+pub static PRUNER_LEAST_READABLE_VERSION_ITEMS_PRUNED: Lazy<IntGaugeVec> = Lazy::new(|| {
+    register_int_gauge_vec!(
+        // metric name
+        "aptos_pruner_min_readable_version_num_items_pruned",
+        // metric description
+        "Aptos pruner number of items pruned in the least readable state version",
+        // metric labels (dimensions)
+        &["pruner_name",]
+    )
+    .unwrap()
+});
+
 pub static PRUNER_BATCH_SIZE: Lazy<IntGauge> =
     Lazy::new(|| register_int_gauge!("pruner_batch_size", "Aptos pruner batch size").unwrap());
 

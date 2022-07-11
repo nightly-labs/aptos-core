@@ -21,7 +21,7 @@ pub trait DBPruner {
                         "{} initialized.",
                         self.name()
                     );
-                    self.record_progress(min_readable_version);
+                    self.record_progress(min_readable_version, None);
                     return;
                 }
                 Err(e) => {
@@ -67,7 +67,7 @@ pub trait DBPruner {
         )
     }
     /// Records the current progress of the pruner by updating the least readable version
-    fn record_progress(&self, min_readable_version: Version);
+    fn record_progress(&self, min_readable_version: Version, num_items_pruned: Option<usize>);
 
     /// True if there is pruning work pending to be done
     fn is_pruning_pending(&self) -> bool {

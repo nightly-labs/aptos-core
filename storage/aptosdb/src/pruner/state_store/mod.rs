@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    jellyfish_merkle_node::JellyfishMerkleNodeSchema, metrics::PRUNER_LEAST_READABLE_VERSION,
-    pruner::db_pruner::DBPruner, stale_node_index::StaleNodeIndexSchema, OTHER_TIMERS_SECONDS,
+    jellyfish_merkle_node::JellyfishMerkleNodeSchema,
+    metrics::{PRUNER_LEAST_READABLE_VERSION, PRUNER_LEAST_READABLE_VERSION_ITEMS_PRUNED},
+    pruner::db_pruner::DBPruner,
+    stale_node_index::StaleNodeIndexSchema,
+    OTHER_TIMERS_SECONDS,
 };
 use aptos_infallible::Mutex;
 use aptos_jellyfish_merkle::StaleNodeIndex;
@@ -12,7 +15,10 @@ use aptos_types::transaction::{AtomicVersion, Version};
 use schemadb::{ReadOptions, SchemaBatch, SchemaIterator, DB};
 use std::{
     iter::Peekable,
-    sync::{atomic::Ordering, Arc},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 
@@ -28,6 +34,7 @@ pub struct StateStorePruner {
     /// Keeps track of the target version that the pruner needs to achieve.
     target_version: AtomicVersion,
     min_readable_version: AtomicVersion,
+    num_items_pruned: AtomicUsize,
 }
 
 impl DBPruner for StateStorePruner {
@@ -44,15 +51,17 @@ impl DBPruner for StateStorePruner {
             return Ok(self.min_readable_version());
         }
         let min_readable_version = self.min_readable_version.load(Ordering::Relaxed);
+        let num_items_pruned = self.num_items_pruned.load(Ordering::Relaxed);
         let target_version = self.target_version();
         return match prune_state_store(
             &self.db,
             min_readable_version,
             target_version,
             max_versions as usize,
+            num_items_pruned,
         ) {
-            Ok(new_min_readable_version) => {
-                self.record_progress(new_min_readable_version);
+            Ok((new_min_readable_version, num_items_pruned)) => {
+                self.record_progress(new_min_readable_version, Some(num_items_pruned));
                 // Try to purge the log.
                 if let Err(e) = self.maybe_purge_index() {
                     warn!(
@@ -98,12 +107,24 @@ impl DBPruner for StateStorePruner {
         self.target_version.load(Ordering::Relaxed)
     }
 
-    fn record_progress(&self, min_readable_version: Version) {
+    fn record_progress(
+        &self,
+        min_readable_version: Version,
+        num_items_pruned_option: Option<usize>,
+    ) {
         self.min_readable_version
             .store(min_readable_version, Ordering::Relaxed);
+
         PRUNER_LEAST_READABLE_VERSION
             .with_label_values(&["state_store"])
             .set(min_readable_version as i64);
+        if let Some(num_items_pruned) = num_items_pruned_option {
+            self.num_items_pruned
+                .store(num_items_pruned, Ordering::Relaxed);
+            PRUNER_LEAST_READABLE_VERSION_ITEMS_PRUNED
+                .with_label_values(&["state_store"])
+                .set(num_items_pruned as i64);
+        }
     }
 }
 
@@ -119,6 +140,7 @@ impl StateStorePruner {
             index_purged_at: Mutex::new(index_purged_at),
             target_version: AtomicVersion::new(0),
             min_readable_version: AtomicVersion::new(0),
+            num_items_pruned: AtomicUsize::new(0),
         };
         pruner.initialize();
         pruner
@@ -170,32 +192,80 @@ impl StateStorePruner {
     }
 }
 
+pub fn num_versions_to_prune(
+    stale_node_indices: &Vec<Vec<StaleNodeIndex>>,
+    num_node_deleted: usize,
+    batch_size: usize,
+) -> (usize, usize) {
+    let mut vec_idx = 0;
+    let mut num_items_left = batch_size;
+    let mut num_items_deleted_in_the_last_version = 0;
+    for (pos, vector) in stale_node_indices.iter().enumerate() {
+        if pos == 0 {
+            if num_node_deleted + num_items_left > vector.len() {
+                vec_idx += 1;
+                num_items_left -= vector.len() - num_node_deleted;
+                num_items_deleted_in_the_last_version = vector.len();
+            } else {
+                num_items_deleted_in_the_last_version = num_node_deleted + num_items_left;
+                break;
+            }
+        } else if num_items_left > vector.len() {
+            vec_idx += 1;
+            num_items_deleted_in_the_last_version = vector.len();
+            num_items_left -= vector.len();
+        } else {
+            num_items_deleted_in_the_last_version = num_items_left;
+            break;
+        }
+    }
+    return (vec_idx + 1, num_items_deleted_in_the_last_version);
+}
+
 pub fn prune_state_store(
     db: &DB,
     min_readable_version: Version,
     target_version: Version,
     max_versions: usize,
-) -> anyhow::Result<Version> {
-    let indices = StaleNodeIndicesByVersionIterator::new(db, min_readable_version, target_version)?
-        .take(max_versions) // Iterator<Item = Result<Vec<StaleNodeIndex>>>
-        .collect::<anyhow::Result<Vec<_>>>()? // now Vec<Vec<StaleNodeIndex>>
+    num_node_deleted: usize,
+) -> anyhow::Result<(Version, usize)> {
+    let batch_size = 1000;
+    let stale_node_indices =
+        StaleNodeIndicesByVersionIterator::new(db, min_readable_version, target_version)?
+            .take(max_versions) // Iterator<Item = Result<Vec<StaleNodeIndex>>>
+            .collect::<anyhow::Result<Vec<_>>>()?; // now Vec<Vec<StaleNodeIndex>>
+    let (num_versions, num_items_deleted_in_the_last_version) =
+        num_versions_to_prune(&stale_node_indices, num_node_deleted, batch_size);
+    let indices = stale_node_indices
         .into_iter()
+        .take(num_versions)
         .flatten()
         .collect::<Vec<_>>();
 
     if indices.is_empty() {
-        Ok(min_readable_version)
+        Ok((min_readable_version, 0))
     } else {
         let _timer = OTHER_TIMERS_SECONDS
             .with_label_values(&["pruner_commit"])
             .start_timer();
-        let new_min_readable_version = indices.last().expect("Should exist.").stale_since_version;
         let mut batch = SchemaBatch::new();
-        indices
+        let to_be_deleted_indices = indices.into_iter().skip(num_node_deleted);
+        assert_ne!(to_be_deleted_indices.len(), 0);
+
+        let to_be_deleted_indices_this_iteration =
+            to_be_deleted_indices.take(batch_size).collect::<Vec<_>>();
+        let new_min_readable_version = to_be_deleted_indices_this_iteration
+            .last()
+            .expect("Should exist.")
+            .stale_since_version;
+        to_be_deleted_indices_this_iteration
             .into_iter()
             .try_for_each(|index| batch.delete::<JellyfishMerkleNodeSchema>(&index.node_key))?;
         db.write_schemas(batch)?;
-        Ok(new_min_readable_version)
+        Ok((
+            new_min_readable_version,
+            num_items_deleted_in_the_last_version,
+        ))
     }
 }
 

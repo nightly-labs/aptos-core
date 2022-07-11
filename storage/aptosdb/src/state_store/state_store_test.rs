@@ -53,6 +53,7 @@ fn prune_stale_indices(
         min_readable_version,
         target_min_readable_version,
         limit,
+        0, //////////////// TODO Add a test
     )
     .unwrap();
 }

@@ -58,7 +58,7 @@ impl DBPruner for LedgerPruner {
         self.event_store_pruner
             .prune(db_batch, min_readable_version, current_target_version)?;
 
-        self.record_progress(current_target_version);
+        self.record_progress(current_target_version, None);
         Ok(current_target_version)
     }
 
@@ -81,7 +81,7 @@ impl DBPruner for LedgerPruner {
         self.target_version.load(Ordering::Relaxed)
     }
 
-    fn record_progress(&self, min_readable_version: Version) {
+    fn record_progress(&self, min_readable_version: Version, _num_items_pruned: Option<usize>) {
         self.min_readable_version
             .store(min_readable_version, Ordering::Relaxed);
         PRUNER_LEAST_READABLE_VERSION
