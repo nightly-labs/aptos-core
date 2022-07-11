@@ -394,6 +394,13 @@ impl<
         // transaction at the syncing version. In this case, we need to handle the
         // new committed transaction and events.
         if committed_states.all_states_synced {
+            info!(LogSchema::new(LogEntry::Driver).message(&format!(
+                "Successfully synced all state values at version: {:?}. \
+                Last committed index: {:?}",
+                self.state_value_syncer.ledger_info_to_sync,
+                committed_states.last_committed_state_index
+            )));
+
             let committed_transactions = committed_states.committed_transaction.expect(
                 "Committed transaction should exist for last committed state values chunk!",
             );

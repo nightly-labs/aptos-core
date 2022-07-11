@@ -128,6 +128,9 @@ pub trait TreeReader<K> {
             .ok_or_else(|| format_err!("Missing node at {:?}.", node_key))
     }
 
+    /// Gets the node count (i.e., number of persisted nodes).
+    fn get_node_count(&self, version: Version) -> Result<u64>;
+
     /// Gets node given a node key. Returns `None` if the node does not exist.
     fn get_node_option(&self, node_key: &NodeKey) -> Result<Option<Node<K>>>;
 

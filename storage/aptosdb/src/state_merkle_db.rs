@@ -118,6 +118,22 @@ impl StateMerkleDb {
 }
 
 impl TreeReader<StateKey> for StateMerkleDb {
+    fn get_node_count(&self, version: Version) -> Result<u64> {
+        // TODO(joshlind): there must be a smarter way of doing this.
+        let mut node_count = 0;
+        let mut iter = self.iter::<JellyfishMerkleNodeSchema>(Default::default())?;
+        loop {
+            match iter.next().transpose()? {
+                Some((node_key, _node)) => {
+                    if node_key.version() == version {
+                        node_count += 1;
+                    }
+                }
+                None => return Ok(node_count),
+            }
+        }
+    }
+
     fn get_node_option(&self, node_key: &NodeKey) -> Result<Option<Node>> {
         self.get::<JellyfishMerkleNodeSchema>(node_key)
     }

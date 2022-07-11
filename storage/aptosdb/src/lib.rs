@@ -57,6 +57,7 @@ use anyhow::{ensure, Result};
 use aptos_config::config::{RocksdbConfigs, StoragePrunerConfig, NO_OP_STORAGE_PRUNER_CONFIG};
 use aptos_crypto::hash::{HashValue, SPARSE_MERKLE_PLACEHOLDER_HASH};
 use aptos_infallible::Mutex;
+use aptos_jellyfish_merkle::TreeReader;
 use aptos_logger::prelude::*;
 use aptos_types::{
     account_address::AccountAddress,
@@ -1236,6 +1237,14 @@ impl DbReader for AptosDB {
     fn get_state_leaf_count(&self, version: Version) -> Result<usize> {
         gauged_api("get_state_leaf_count", || {
             self.state_store.get_value_count(version)
+        })
+    }
+
+    fn get_num_saved_state_values(&self, version: Version) -> Result<u64> {
+        gauged_api("get_num_saved_state_values", || {
+            let state_tree_reader: Arc<dyn TreeReader<_>> =
+                self.state_store.state_merkle_db.clone();
+            state_tree_reader.get_node_count(version)
         })
     }
 

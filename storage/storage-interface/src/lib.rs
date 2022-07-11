@@ -491,6 +491,13 @@ pub trait DbReader: Send + Sync {
         unimplemented!()
     }
 
+    /// Returns the total number of state values persisted at the given version.
+    /// This is used by state sync to resume snapshot syncing after failures.
+    /// Note: this function call is expensive and should not be done often!
+    fn get_num_saved_state_values(&self, version: Version) -> Result<u64> {
+        unimplemented!()
+    }
+
     /// Get a chunk of state store value, addressed by the index.
     fn get_state_value_chunk_with_proof(
         &self,
