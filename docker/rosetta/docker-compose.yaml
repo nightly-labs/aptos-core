@@ -1,0 +1,28 @@
+version: "3.9"
+services:
+  fullnode:
+    entrypoint: aptos-node
+    restart: unless-stopped
+    build:
+      context: ./
+      dockerfile: rosetta.Dockerfile
+      args:
+        GIT_SHA: 7f57647031abfd6e70c5d1bb6a0c2600c1e28c49
+    ports:
+      - "8000:5000"
+    volumes:
+      - ./data:/opt/aptos
+
+  rosetta-api:
+    entrypoint: aptos-rosetta
+    command: [online]
+    restart: unless-stopped
+    build:
+      context: ./
+      dockerfile: rosetta.Dockerfile
+      args:
+        GIT_SHA: 7f57647031abfd6e70c5d1bb6a0c2600c1e28c49
+    links:
+      - fullnode
+    volumes:
+      - ./data:/opt/aptos
