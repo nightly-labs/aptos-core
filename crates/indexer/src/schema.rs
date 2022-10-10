@@ -192,6 +192,7 @@ diesel::table! {
     marketplace_collections (creator_address, collection_name) {
         creator_address -> Varchar,
         collection_name -> Text,
+        creation_timestamp -> Timestamp,
     }
 }
 
