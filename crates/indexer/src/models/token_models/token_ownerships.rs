@@ -14,6 +14,7 @@ use crate::{
     util::standardize_address,
 };
 use bigdecimal::BigDecimal;
+use diesel::{query_dsl::methods::FilterDsl, QueryDsl};
 use field_count::FieldCount;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -139,5 +140,17 @@ impl TokenOwnership {
             },
             curr_token_ownership,
         )))
+    }
+}
+
+impl CurrentTokenOwnership {
+    pub fn get_by_owner(
+        conn: &mut PgPoolConnection,
+        owner_address: String,
+    ) -> diesel::QueryResult<Option<Self>> {
+        current_token_ownerships::table
+            .filter(current_token_ownerships::owner_address.eq(owner_address))
+            .first::<Self>(conn)
+            .optional()
     }
 }
