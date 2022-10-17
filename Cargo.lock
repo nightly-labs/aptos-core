@@ -691,6 +691,8 @@ dependencies = [
  "futures",
  "hex",
  "once_cell",
+ "poem",
+ "poem-openapi",
  "regex",
  "reqwest",
  "reqwest-middleware",

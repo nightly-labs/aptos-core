@@ -3,23 +3,24 @@
 
 use poem_openapi::Tags;
 
-mod accept_type;
+pub mod accept_type;
 mod accounts;
 mod basic;
 mod bcs_payload;
 mod blocks;
-mod check_size;
+pub mod check_size;
 pub mod context;
-mod error_converter;
+pub mod error_converter;
 mod events;
-mod failpoint;
+pub mod failpoint;
 mod index;
-mod log;
+pub mod log;
 pub mod metrics;
 mod page;
-mod response;
+
+pub mod response;
 mod runtime;
-mod set_failpoints;
+pub mod set_failpoints;
 mod state;
 #[cfg(test)]
 pub mod tests;

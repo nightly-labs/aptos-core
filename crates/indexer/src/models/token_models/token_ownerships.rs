@@ -127,15 +127,3 @@ impl TokenOwnership {
         )
     }
 }
-
-impl CurrentTokenOwnership {
-    pub fn get_by_owner(
-        conn: &mut PgPoolConnection,
-        owner_address: String,
-    ) -> diesel::QueryResult<Option<Self>> {
-        current_token_ownerships::table
-            .filter(current_token_ownerships::owner_address.eq(owner_address))
-            .first::<Self>(conn)
-            .optional()
-    }
-}
