@@ -15,23 +15,26 @@ use crate::{
     },
 };
 
-use anyhow::Context;
+use anyhow::Context as AnyhowContext;
+use aptos_api::context::Context;
 use aptos_api::{
     check_size::PostSizeLimit, error_converter::convert_error, log::middleware_log, set_failpoints,
-    tokens::TokensApi,
 };
-use aptos_api::{context::Context, generate_success_response};
 use aptos_config::config::{IndexerConfig, NodeConfig};
 use aptos_logger::{error, info};
 use aptos_mempool::MempoolClientSender;
 use aptos_types::chain_id::ChainId;
+use diesel::{
+    r2d2::{ConnectionManager, Pool},
+    PgConnection,
+};
 use poem::{
     http::{header, Method},
     listener::{Listener, RustlsCertificate, RustlsConfig, TcpListener},
     middleware::Cors,
     EndpointExt, Route, Server,
 };
-use poem_openapi::OpenApiService;
+use poem_openapi::{ContactObject, LicenseObject, OpenApiService};
 use std::sync::Arc;
 use std::{collections::VecDeque, net::SocketAddr};
 use storage_interface::DbReader;
@@ -108,18 +111,40 @@ pub fn bootstrap(
 
     let indexer_config = config.indexer.clone();
     let node_config = config.clone();
-    let context = Arc::new(Context::new(chain_id, db, mp_sender, node_config));
-    attach_poem_to_runtime(runtime.handle(), context.clone(), config)
-        .context("failed to attach poem to runtime")?;
+    let context = Context::new(chain_id, db, mp_sender, node_config);
+
+    let db_uri = &indexer_config.postgres_uri.unwrap();
+    info!(
+        processor_name = indexer_config.processor.clone().unwrap(),
+        "Creating connection pool..."
+    );
+    let conn_pool = new_db_pool(db_uri).expect("Failed to create connection pool");
+    info!(
+        processor_name = indexer_config.processor.clone().unwrap(),
+        "Created the connection pool... "
+    );
+
+    attach_poem_to_runtime(
+        runtime.handle(),
+        context.clone(),
+        config,
+        conn_pool.get().unwrap(),
+    )
+    .context("Failed to attach poem to runtime")
+    .ok()?;
 
     runtime.spawn(async move {
-        run_forever(indexer_config, context).await;
+        run_forever(indexer_config, Arc::new(context), conn_pool).await;
     });
 
     Some(Ok(runtime))
 }
 
-pub async fn run_forever(config: IndexerConfig, context: Arc<Context>) {
+pub async fn run_forever(
+    config: IndexerConfig,
+    context: Arc<Context>,
+    conn_pool: Arc<Pool<ConnectionManager<PgConnection>>>,
+) {
     // All of these options should be filled already with defaults
     let processor_name = config.processor.clone().unwrap();
     let check_chain_id = config.check_chain_id.unwrap();
@@ -131,17 +156,6 @@ pub async fn run_forever(config: IndexerConfig, context: Arc<Context>) {
     let lookback_versions = config.gap_lookback_versions.unwrap() as i64;
 
     info!(processor_name = processor_name, "Starting indexer...");
-
-    let db_uri = &config.postgres_uri.unwrap();
-    info!(
-        processor_name = processor_name,
-        "Creating connection pool..."
-    );
-    let conn_pool = new_db_pool(db_uri).expect("Failed to create connection pool");
-    info!(
-        processor_name = processor_name,
-        "Created the connection pool... "
-    );
 
     info!(processor_name = processor_name, "Instantiating tailer... ");
 
@@ -280,13 +294,14 @@ fn attach_poem_to_runtime(
     runtime_handle: &Handle,
     context: Context,
     config: &NodeConfig,
+    conn_pool: Pool<ConnectionManager<PgConnection>>,
 ) -> anyhow::Result<SocketAddr> {
     let context_arc = Arc::new(context);
     let size_limit = context.content_length_limit();
-    let apis = (TokenAPI {
-        context: context.clone(),
+    let apis = TokenAPI {
+        context: context_arc.clone(),
         conn: conn_pool.clone(),
-    });
+    };
 
     let license =
         LicenseObject::new("Apache 2.0").url("https://www.apache.org/licenses/LICENSE-2.0.html");

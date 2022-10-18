@@ -6,12 +6,8 @@
 #![allow(clippy::unused_unit)]
 
 use super::tokens::{TableHandleToOwner, TableMetadataForToken, Token};
-use crate::{
-    database::PgPoolConnection,
-    schema::{current_token_ownerships, token_ownerships},
-};
+use crate::schema::{current_token_ownerships, token_ownerships};
 use bigdecimal::BigDecimal;
-use diesel::{query_dsl::methods::FilterDsl, QueryDsl};
 use field_count::FieldCount;
 use serde::{Deserialize, Serialize};
 
@@ -38,7 +34,7 @@ pub struct TokenOwnership {
     pub transaction_timestamp: chrono::NaiveDateTime,
 }
 
-#[derive(Debug, Deserialize, FieldCount, Identifiable, Insertable, Serialize)]
+#[derive(Debug, Deserialize, FieldCount, Identifiable, Insertable, Serialize, Queryable)]
 #[diesel(primary_key(token_data_id_hash, property_version, owner_address))]
 #[diesel(table_name = current_token_ownerships)]
 pub struct CurrentTokenOwnership {
