@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    api::TokenAPI,
     database::new_db_pool,
     indexer::{
         fetcher::TransactionFetcherOptions, tailer::Tailer,
@@ -9,19 +10,35 @@ use crate::{
     },
     processors::{
         coin_processor::CoinTransactionProcessor, default_processor::DefaultTransactionProcessor,
-        token_processor::TokenTransactionProcessor, Processor,
+        marketplace_processor::MarketplaceProcessor, token_processor::TokenTransactionProcessor,
+        Processor,
     },
 };
 
+use anyhow::Context as AnyhowContext;
 use aptos_api::context::Context;
+use aptos_api::{
+    check_size::PostSizeLimit, error_converter::convert_error, log::middleware_log, set_failpoints,
+};
 use aptos_config::config::{IndexerConfig, NodeConfig};
 use aptos_logger::{error, info};
 use aptos_mempool::MempoolClientSender;
 use aptos_types::chain_id::ChainId;
-use std::collections::VecDeque;
+use diesel::{
+    r2d2::{ConnectionManager, Pool},
+    PgConnection,
+};
+use poem::{
+    http::{header, Method},
+    listener::{Listener, RustlsCertificate, RustlsConfig, TcpListener},
+    middleware::Cors,
+    EndpointExt, Route, Server,
+};
+use poem_openapi::{ContactObject, LicenseObject, OpenApiService};
 use std::sync::Arc;
+use std::{collections::VecDeque, net::SocketAddr};
 use storage_interface::DbReader;
-use tokio::runtime::{Builder, Runtime};
+use tokio::runtime::{Builder, Handle, Runtime};
 
 pub struct MovingAverage {
     window_millis: u64,
@@ -94,16 +111,40 @@ pub fn bootstrap(
 
     let indexer_config = config.indexer.clone();
     let node_config = config.clone();
+    let context = Context::new(chain_id, db, mp_sender, node_config);
+
+    let db_uri = &indexer_config.postgres_uri.unwrap();
+    info!(
+        processor_name = indexer_config.processor.clone().unwrap(),
+        "Creating connection pool..."
+    );
+    let conn_pool = new_db_pool(db_uri).expect("Failed to create connection pool");
+    info!(
+        processor_name = indexer_config.processor.clone().unwrap(),
+        "Created the connection pool... "
+    );
+
+    attach_poem_to_runtime(
+        runtime.handle(),
+        context.clone(),
+        config,
+        conn_pool.get().unwrap(),
+    )
+    .context("Failed to attach poem to runtime")
+    .ok()?;
 
     runtime.spawn(async move {
-        let context = Arc::new(Context::new(chain_id, db, mp_sender, node_config));
-        run_forever(indexer_config, context).await;
+        run_forever(indexer_config, Arc::new(context), conn_pool).await;
     });
 
     Some(Ok(runtime))
 }
 
-pub async fn run_forever(config: IndexerConfig, context: Arc<Context>) {
+pub async fn run_forever(
+    config: IndexerConfig,
+    context: Arc<Context>,
+    conn_pool: Arc<Pool<ConnectionManager<PgConnection>>>,
+) {
     // All of these options should be filled already with defaults
     let processor_name = config.processor.clone().unwrap();
     let check_chain_id = config.check_chain_id.unwrap();
@@ -115,17 +156,6 @@ pub async fn run_forever(config: IndexerConfig, context: Arc<Context>) {
     let lookback_versions = config.gap_lookback_versions.unwrap() as i64;
 
     info!(processor_name = processor_name, "Starting indexer...");
-
-    let db_uri = &config.postgres_uri.unwrap();
-    info!(
-        processor_name = processor_name,
-        "Creating connection pool..."
-    );
-    let conn_pool = new_db_pool(db_uri).expect("Failed to create connection pool");
-    info!(
-        processor_name = processor_name,
-        "Created the connection pool... "
-    );
 
     info!(processor_name = processor_name, "Instantiating tailer... ");
 
@@ -139,6 +169,7 @@ pub async fn run_forever(config: IndexerConfig, context: Arc<Context>) {
             config.ans_contract_address,
         )),
         Processor::CoinProcessor => Arc::new(CoinTransactionProcessor::new(conn_pool.clone())),
+        Processor::MarketplaceProcessor => Arc::new(MarketplaceProcessor::new(conn_pool.clone())),
     };
 
     let options =
@@ -256,4 +287,103 @@ pub async fn run_forever(config: IndexerConfig, context: Arc<Context>) {
             }
         }
     }
+}
+
+// Copied from ../../api/src/runtime.rs
+fn attach_poem_to_runtime(
+    runtime_handle: &Handle,
+    context: Context,
+    config: &NodeConfig,
+    conn_pool: Pool<ConnectionManager<PgConnection>>,
+) -> anyhow::Result<SocketAddr> {
+    let context_arc = Arc::new(context);
+    let size_limit = context.content_length_limit();
+    let apis = TokenAPI {
+        context: context_arc.clone(),
+        conn: conn_pool.clone(),
+    };
+
+    let license =
+        LicenseObject::new("Apache 2.0").url("https://www.apache.org/licenses/LICENSE-2.0.html");
+    let contact = ContactObject::new()
+        .name("Aptos Labs")
+        .url("https://github.com/aptos-labs/aptos-core");
+    let service = OpenApiService::new(apis, "Aptos Node API", "")
+        .server("/v1")
+        .description("The Aptos Node API is a RESTful API for client applications to interact with the Aptos blockchain.")
+        .license(license)
+        .contact(contact)
+        .external_document("https://github.com/aptos-labs/aptos-core");
+
+    let spec_json = service.spec_endpoint();
+    let spec_yaml = service.spec_endpoint_yaml();
+    let mut address = config.api.address;
+    address.set_port(5555);
+
+    let listener = match (&config.api.tls_cert_path, &config.api.tls_key_path) {
+        (Some(tls_cert_path), Some(tls_key_path)) => {
+            info!("Using TLS for API");
+            let cert = std::fs::read_to_string(tls_cert_path).context(format!(
+                "Failed to read TLS cert from path: {}",
+                tls_cert_path
+            ))?;
+            let key = std::fs::read_to_string(tls_key_path).context(format!(
+                "Failed to read TLS key from path: {}",
+                tls_key_path
+            ))?;
+            let rustls_certificate = RustlsCertificate::new().cert(cert).key(key);
+            let rustls_config = RustlsConfig::new().fallback(rustls_certificate);
+            TcpListener::bind(address).rustls(rustls_config).boxed()
+        }
+        _ => {
+            info!("Not using TLS for API");
+            TcpListener::bind(address).boxed()
+        }
+    };
+
+    let acceptor = tokio::task::block_in_place(move || {
+        runtime_handle
+            .block_on(async move { listener.into_acceptor().await })
+            .with_context(|| format!("Failed to bind Poem to address: {}", address))
+    })?;
+
+    let actual_address = &acceptor.local_addr()[0];
+    let actual_address = *actual_address
+        .as_socket_addr()
+        .context("Failed to get socket addr from local addr for Poem webserver")?;
+
+    runtime_handle.spawn(async move {
+        let cors = Cors::new()
+            .allow_credentials(true)
+            .allow_methods(vec![Method::GET, Method::POST])
+            .allow_headers(vec![header::CONTENT_TYPE, header::ACCEPT]);
+
+        let route = Route::new()
+            .nest(
+                "/v1",
+                Route::new()
+                    .nest("/", service)
+                    .at("/spec.json", spec_json)
+                    .at("/spec.yaml", spec_yaml)
+                    .at(
+                        "/set_failpoint",
+                        poem::get(set_failpoints::set_failpoint_poem).data(context.clone()),
+                    ),
+            )
+            .with(cors)
+            .with(PostSizeLimit::new(size_limit))
+            .catch_all_error(convert_error)
+            .around(middleware_log);
+        Server::new_with_acceptor(acceptor)
+            .run(route)
+            .await
+            .map_err(anyhow::Error::msg)
+    });
+
+    info!(
+        "Poem is running at {}, behind the reverse proxy at the API port",
+        actual_address
+    );
+
+    Ok(actual_address)
 }

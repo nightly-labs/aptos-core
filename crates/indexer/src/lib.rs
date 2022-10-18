@@ -4,6 +4,8 @@
 // Increase recursion limit for `serde_json::json!` macro parsing
 #![recursion_limit = "256"]
 
+use poem_openapi::Tags;
+
 #[macro_use]
 extern crate diesel_migrations;
 
@@ -11,6 +13,7 @@ extern crate diesel_migrations;
 #[macro_use]
 extern crate diesel;
 
+pub mod api;
 pub mod counters;
 pub mod database;
 pub mod indexer;
@@ -19,6 +22,11 @@ pub mod processors;
 pub mod runtime;
 pub mod schema;
 mod util;
+
+#[derive(Tags)]
+pub enum ApiTags {
+    Tokens,
+}
 
 /// By default, skips test unless `INDEXER_DATABASE_URL` is set.
 /// In CI, will explode if `INDEXER_DATABASE_URL` is NOT set.
