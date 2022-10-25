@@ -1,11 +1,14 @@
 #![allow(clippy::extra_unused_lifetimes)]
 #![allow(clippy::unused_unit)]
 
-use aptos_api_types::{TransactionPayload, UserTransaction};
+use anyhow::Result;
+use aptos_api_types::{EntryFunctionPayload, WriteTableItem};
 use field_count::FieldCount;
 use serde::{Deserialize, Serialize};
 
-use crate::{schema::marketplace_orders, util::parse_timestamp};
+use crate::schema::marketplace_orders;
+
+use super::utils::{MarketplacePayload, MarketplaceWriteSet};
 
 #[derive(Debug, Deserialize, FieldCount, Identifiable, Insertable, Queryable, Serialize)]
 #[diesel(primary_key(creator_address, collection_name))]
@@ -13,8 +16,6 @@ use crate::{schema::marketplace_orders, util::parse_timestamp};
 pub struct MarketplaceOrder {
     creator_address: String,
     collection_name: String,
-    token_name: String,
-    property_version: i32,
     price: i64,
     quantity: i64,
     maker: String,
@@ -22,24 +23,46 @@ pub struct MarketplaceOrder {
 }
 
 impl MarketplaceOrder {
-    pub fn from_transaction(txn: &UserTransaction) -> Option<Self> {
-        let version = txn.info.version.0;
-        match txn.request.payload {
-            TransactionPayload::EntryFunctionPayload(payload) => Some(Self {
-                creator_address: payload.arguments[0]["creator"].to_string(),
-                collection_name: payload.arguments[0]["collection_name"].to_string(),
-                token_name: payload.arguments[0]["token_name"].to_string(),
-                property_version: payload.arguments[0]["property_version"]
-                    .as_i64()
-                    .unwrap()
-                    .try_into()
-                    .unwrap(),
-                price: payload.arguments[0]["price"].as_i64().unwrap(),
-                quantity: payload.arguments[0]["quantity"].as_i64().unwrap(),
-                maker: txn.request.sender.inner().to_hex_literal(),
-                timestamp: parse_timestamp(txn.timestamp.0, version.try_into().unwrap()),
-            }),
+    pub fn from_table_item(
+        table_item: &WriteTableItem,
+        payload: EntryFunctionPayload,
+        txn_version: i64,
+        txn_timestamp: chrono::NaiveDateTime,
+    ) -> Result<Option<Self>> {
+        let table_item_data = &table_item.data.unwrap();
+        let maybe_order = match MarketplaceWriteSet::from_table_item_type(
+            table_item_data.key_type.as_str(),
+            &table_item_data.value,
+            txn_version,
+        )? {
+            Some(MarketplaceWriteSet::Order(inner)) => Some(inner),
             _ => None,
+        };
+        let maybe_place_order_payload = match MarketplacePayload::from_function_name(
+            &payload.function.to_string(),
+            &payload.arguments,
+            txn_version,
+        )
+        .unwrap()
+        {
+            Some(payload_type) => match payload_type {
+                MarketplacePayload::PlaceOrderPayload(inner) => Some(inner),
+                _ => None,
+            },
+            None => None,
+        };
+
+        if let (Some(order), Some(place_order_payload)) = (maybe_order, maybe_place_order_payload) {
+            Ok(Some(Self {
+                creator_address: place_order_payload.creator,
+                collection_name: place_order_payload.collection_name,
+                price: order.price,
+                quantity: order.quantity,
+                maker: serde_json::from_value(table_item_data.key.clone())?,
+                timestamp: txn_timestamp,
+            }))
+        } else {
+            Ok(None)
         }
     }
 }
