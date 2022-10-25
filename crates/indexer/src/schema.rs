@@ -1,3 +1,6 @@
+// Copyright (c) Aptos
+// SPDX-License-Identifier: Apache-2.0
+
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
@@ -79,11 +82,9 @@ diesel::table! {
         collection_data_id_hash -> Varchar,
         transaction_version -> Int8,
         creator_address -> Varchar,
-        collection_name_hash -> Varchar,
-        collection_name -> Text,
+        collection_name -> Varchar,
         description -> Text,
-        transaction_version -> Int8,
-        metadata_uri -> Text,
+        metadata_uri -> Varchar,
         supply -> Numeric,
         maximum -> Numeric,
         maximum_mutable -> Bool,
@@ -233,7 +234,7 @@ diesel::table! {
         creator_address -> Varchar,
         collection_name -> Text,
         token_name -> Text,
-        property_version -> Int4,
+        property_version -> Int8,
         price -> Int8,
         maker -> Varchar,
         timestamp -> Timestamp,
@@ -243,6 +244,7 @@ diesel::table! {
 diesel::table! {
     marketplace_collections (creator_address, collection_name) {
         creator_address -> Varchar,
+        collection_address -> Varchar,
         collection_name -> Text,
         creation_timestamp -> Timestamp,
     }
@@ -253,7 +255,7 @@ diesel::table! {
         creator_address -> Varchar,
         collection_name -> Text,
         token_name -> Text,
-        property_version -> Int4,
+        property_version -> Int8,
         price -> Int8,
         seller -> Varchar,
         timestamp -> Timestamp,
@@ -265,7 +267,7 @@ diesel::table! {
         creator_address -> Varchar,
         collection_name -> Text,
         token_name -> Text,
-        property_version -> Int4,
+        property_version -> Int8,
         price -> Int8,
         quantity -> Int8,
         maker -> Varchar,
@@ -381,17 +383,16 @@ diesel::table! {
 }
 
 diesel::table! {
-    token_datas (creator_address, collection_name_hash, name_hash, transaction_version) {
-        creator_address -> Varchar,
-        collection_name_hash -> Varchar,
-        name_hash -> Varchar,
-        collection_name -> Text,
-        name -> Text,
+    token_datas (token_data_id_hash, transaction_version) {
+        token_data_id_hash -> Varchar,
         transaction_version -> Int8,
+        creator_address -> Varchar,
+        collection_name -> Varchar,
+        name -> Varchar,
         maximum -> Numeric,
         supply -> Numeric,
         largest_property_version -> Numeric,
-        metadata_uri -> Text,
+        metadata_uri -> Varchar,
         payee_address -> Varchar,
         royalty_points_numerator -> Numeric,
         royalty_points_denominator -> Numeric,
@@ -409,17 +410,16 @@ diesel::table! {
 }
 
 diesel::table! {
-    token_ownerships (creator_address, collection_name_hash, name_hash, property_version, transaction_version, table_handle) {
-        creator_address -> Varchar,
-        collection_name_hash -> Varchar,
-        name_hash -> Varchar,
-        collection_name -> Text,
-        name -> Text,
+    token_ownerships (token_data_id_hash, property_version, transaction_version, table_handle) {
+        token_data_id_hash -> Varchar,
         property_version -> Numeric,
         transaction_version -> Int8,
+        table_handle -> Varchar,
+        creator_address -> Varchar,
+        collection_name -> Varchar,
+        name -> Varchar,
         owner_address -> Nullable<Varchar>,
         amount -> Numeric,
-        table_handle -> Varchar,
         table_type -> Nullable<Text>,
         inserted_at -> Timestamp,
         collection_data_id_hash -> Varchar,
@@ -428,14 +428,13 @@ diesel::table! {
 }
 
 diesel::table! {
-    tokens (creator_address, collection_name_hash, name_hash, property_version, transaction_version) {
-        creator_address -> Varchar,
-        collection_name_hash -> Varchar,
-        name_hash -> Varchar,
-        collection_name -> Text,
-        name -> Text,
+    tokens (token_data_id_hash, property_version, transaction_version) {
+        token_data_id_hash -> Varchar,
         property_version -> Numeric,
         transaction_version -> Int8,
+        creator_address -> Varchar,
+        collection_name -> Varchar,
+        name -> Varchar,
         token_properties -> Jsonb,
         inserted_at -> Timestamp,
         collection_data_id_hash -> Varchar,
