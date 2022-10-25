@@ -1,5 +1,6 @@
 CREATE TABLE marketplace_collections (
     creator_address VARCHAR(66) UNIQUE NOT NULL,
+    collection_address VARCHAR(66) UNIQUE NOT NULL,
     collection_name TEXT UNIQUE NOT NULL,
     creation_timestamp TIMESTAMP NOT NULL,
 
@@ -15,7 +16,7 @@ CREATE TABLE marketplace_offers (
     creator_address VARCHAR(66) NOT NULL,
     collection_name TEXT NOT NULL,
     token_name TEXT NOT NULL,
-    property_version INTEGER NOT NULL,
+    property_version BIGINT NOT NULL,
     price BIGINT NOT NULL,
     seller VARCHAR(66) NOT NULL,
     "timestamp" TIMESTAMP NOT NULL,
@@ -40,7 +41,7 @@ CREATE TABLE marketplace_orders (
     creator_address VARCHAR(66) NOT NULL,
     collection_name TEXT NOT NULL,
     token_name TEXT NOT NULL,
-    property_version INTEGER NOT NULL,
+    property_version BIGINT NOT NULL,
     price BIGINT NOT NULL,
     quantity BIGINT NOT NULL,
     maker VARCHAR(66) NOT NULL,
@@ -67,7 +68,7 @@ CREATE TABLE marketplace_bids (
     creator_address VARCHAR(66) NOT NULL,
     collection_name TEXT NOT NULL,
     token_name TEXT NOT NULL,
-    property_version INTEGER NOT NULL,
+    property_version BIGINT NOT NULL,
     price BIGINT NOT NULL,
     maker VARCHAR(66) NOT NULL,
     "timestamp" TIMESTAMP NOT NULL,
