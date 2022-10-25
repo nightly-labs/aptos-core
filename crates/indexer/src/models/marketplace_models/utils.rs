@@ -1,6 +1,3 @@
-// Copyright (c) Aptos
-// SPDX-License-Identifier: Apache-2.0
-
 use anyhow::{Context, Result};
 use aptos_api_types::deserialize_from_string;
 use bigdecimal::BigDecimal;
