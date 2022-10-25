@@ -15,13 +15,3 @@ repos:
     rev: v1.0
     hooks:
     -   id: fmt
-  - repo: https://github.com/Lucas-C/pre-commit-hooks
-    rev: v1.3.0
-    hooks:
-      - id: insert-license
-        files: \.rs$
-        args:
-          - --license-filepath
-          - devtools/assets/license_header.txt
-          - --comment-style
-          - //
