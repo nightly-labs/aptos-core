@@ -12,19 +12,13 @@ use self::marketplace_processor::NAME as MARKETPLACE_PROCESSOR_NAME;
 use self::token_processor::NAME as TOKEN_PROCESSOR_NAME;
 
 pub enum Processor {
-    CoinProcessor,
-    DefaultProcessor,
-    TokenProcessor,
     MarketplaceProcessor,
 }
 
 impl Processor {
     pub fn from_string(input_str: &String) -> Self {
         match input_str.as_str() {
-            DEFAULT_PROCESSOR_NAME => Self::DefaultProcessor,
-            TOKEN_PROCESSOR_NAME => Self::TokenProcessor,
             MARKETPLACE_PROCESSOR_NAME => Self::MarketplaceProcessor,
-            COIN_PROCESSOR_NAME => Self::CoinProcessor,
             _ => panic!("Processor unsupported {}", input_str),
         }
     }
