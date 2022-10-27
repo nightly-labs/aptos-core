@@ -25,7 +25,6 @@ impl MarketplaceCollection {
         event_type: &str,
         marketplace_event: &Event,
         txn_version: i64,
-        txn_timestamp: chrono::NaiveDateTime,
     ) -> Option<Self> {
         let collection_registration_event =
             match MarketplaceEvent::from_event(event_type, &marketplace_event.data, txn_version)

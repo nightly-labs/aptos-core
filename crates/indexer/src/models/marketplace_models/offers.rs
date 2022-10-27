@@ -2,8 +2,7 @@
 #![allow(clippy::unused_unit)]
 
 use anyhow::Result;
-use aptos_api_types::{EntryFunctionPayload, TransactionPayload, WriteTableItem};
-use aptos_types::transaction::TransactionPayload;
+use aptos_api_types::{EntryFunctionPayload, WriteTableItem};
 use field_count::FieldCount;
 use serde::{Deserialize, Serialize};
 
@@ -31,7 +30,7 @@ impl MarketplaceOffer {
         txn_version: i64,
         txn_timestamp: chrono::NaiveDateTime,
     ) -> Result<Option<Self>> {
-        let table_item_data = &table_item.data.unwrap();
+        let table_item_data = table_item.data.as_ref().unwrap();
         let maybe_offer = match MarketplaceWriteSet::from_table_item_type(
             table_item_data.key_type.as_str(),
             &table_item_data.value,
@@ -42,7 +41,7 @@ impl MarketplaceOffer {
         };
         let maybe_list_item_payload = match MarketplacePayload::from_function_name(
             &payload.function.to_string(),
-            &payload.arguments,
+            payload.arguments,
             txn_version,
         )
         .unwrap()

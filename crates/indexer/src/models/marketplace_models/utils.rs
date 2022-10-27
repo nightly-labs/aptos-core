@@ -2,9 +2,7 @@ use anyhow::{Context, Result};
 use aptos_api_types::deserialize_from_string;
 use bigdecimal::BigDecimal;
 use serde::{Deserialize, Serialize};
-
-const MARKETPLACE_ADDRESS: &str =
-    "0x975c0bad4ee36fcb48fe447647834b9c09ef44349ff593e90dd816dc5a3eccdc";
+use serde_json::Value;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OfferType {
@@ -34,22 +32,16 @@ pub enum MarketplaceWriteSet {
 impl MarketplaceWriteSet {
     pub fn from_table_item_type(
         data_type: &str,
-        data: &serde_json::Value,
+        data: &Value,
         txn_version: i64,
     ) -> Result<Option<MarketplaceWriteSet>> {
         match data_type {
-            format!("{}::collection::Offer", MARKETPLACE_ADDRESS) => {
-                serde_json::from_value(data.clone())
-                    .map(|inner| Some(MarketplaceWriteSet::Offer(inner)))
-            }
-            format!("{}::collection::Order", MARKETPLACE_ADDRESS) => {
-                serde_json::from_value(data.clone())
-                    .map(|inner| Some(MarketplaceWriteSet::Order(inner)))
-            }
-            format!("{}::collection::Bid", MARKETPLACE_ADDRESS) => {
-                serde_json::from_value(data.clone())
-                    .map(|inner| Some(MarketplaceWriteSet::Bid(inner)))
-            }
+            "0x4bed2725cbd33afc34c556a86910456e28537ffb84df6537401c966dbaccf63b::collection::Offer" => serde_json::from_value(data.clone())
+                .map(|inner| Some(MarketplaceWriteSet::Offer(inner))),
+            "0x4bed2725cbd33afc34c556a86910456e28537ffb84df6537401c966dbaccf63b::collection::Order" => serde_json::from_value(data.clone())
+                .map(|inner| Some(MarketplaceWriteSet::Order(inner))),
+            "0x4bed2725cbd33afc34c556a86910456e28537ffb84df6537401c966dbaccf63b::collection:Bid" => serde_json::from_value(data.clone())
+                .map(|inner| Some(MarketplaceWriteSet::Bid(inner))),
             _ => Ok(None),
         }
         .context(format!(
@@ -75,16 +67,10 @@ pub enum MarketplaceEvent {
 }
 
 impl MarketplaceEvent {
-    pub fn from_event(
-        data_type: &str,
-        data: &serde_json::Value,
-        txn_version: i64,
-    ) -> Result<Option<Self>> {
+    pub fn from_event(data_type: &str, data: &Value, txn_version: i64) -> Result<Option<Self>> {
         match data_type {
-            "marketplace-address::events::CollectionRegistrationEvent" => {
-                serde_json::from_value(data.clone())
-                    .map(|inner| Some(MarketplaceEvent::CollectionRegistrationEvent(inner)))
-            }
+            "0x4bed2725cbd33afc34c556a86910456e28537ffb84df6537401c966dbaccf63b::events::CollectionRegistrationEvent" => serde_json::from_value(data.clone())
+                .map(|inner| Some(MarketplaceEvent::CollectionRegistrationEvent(inner))),
             _ => Ok(None),
         }
         .context(format!(
@@ -130,33 +116,45 @@ pub enum MarketplacePayload {
 impl MarketplacePayload {
     pub fn from_function_name(
         function_name: &str,
-        data: &Vec<serde_json::Value>,
+        data: Vec<Value>,
         txn_version: i64,
     ) -> Result<Option<MarketplacePayload>> {
-        let merged_data = Self::merge_values(data);
+        println!("{}", format!("Function name: {}", function_name));
+
         match function_name {
-            "marketplace-address::core::list_item" => serde_json::from_value(merged_data.clone())
+            "0x4bed2725cbd33afc34c556a86910456e28537ffb84df6537401c966dbaccf63b::core::list_item" => serde_json::from_value(merge_values_vector(data).clone())
                 .map(|inner| Some(MarketplacePayload::ListItemPayload(inner))),
-            "marketplace-address::core::place_blind_order" => {
-                serde_json::from_value(merged_data.clone())
-                    .map(|inner| Some(MarketplacePayload::PlaceOrderPayload(inner)))
-            }
-            "marketplace-address::core::place_bidding" => {
-                serde_json::from_value(merged_data.clone())
-                    .map(|inner| Some(MarketplacePayload::PlaceBidPayload(inner)))
-            }
+            "0x4bed2725cbd33afc34c556a86910456e28537ffb84df6537401c966dbaccf63b::core::place_blind_order" => serde_json::from_value(merge_values_vector(data).clone())
+                .map(|inner| Some(MarketplacePayload::PlaceOrderPayload(inner))),
+            "0x4bed2725cbd33afc34c556a86910456e28537ffb84df6537401c966dbaccf63b::core::place_bidding" => serde_json::from_value(merge_values_vector(data).clone())
+                .map(|inner| Some(MarketplacePayload::PlaceBidPayload(inner))),
             _ => Ok(None),
         }
         .context(format!(
-            "Version {} failed! Failed to parse function {}, data {:?}",
-            txn_version, function_name, data
+            "Version {} failed! Failed to parse function {}",
+            txn_version, function_name
         ))
     }
+}
 
-    fn merge_values(values: &Vec<serde_json::Value>) -> serde_json::Value {
-        *values
-            .iter()
-            .reduce(|acc, item| acc.as_object_mut().unwrap().extend(item.as_object().iter()))
-            .unwrap()
+fn merge_values_vector(values: Vec<Value>) -> Value {
+    let mut values_clone = values.clone();
+    let first_value = values_clone.get_mut(0).unwrap();
+    for i in 1..values.clone().len() {
+        merge_two_values(first_value, values[i].clone());
+    }
+
+    first_value.clone()
+}
+
+fn merge_two_values(destination: &mut Value, other: Value) {
+    match (destination, other) {
+        (destination @ Value::Object(_), Value::Object(other_map)) => {
+            let destination_map = destination.as_object_mut().unwrap();
+            for (k, v) in other_map {
+                merge_two_values(destination_map.entry(k).or_insert(Value::Null), v);
+            }
+        }
+        (destination, other) => *destination = other,
     }
 }

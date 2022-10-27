@@ -7,11 +7,7 @@ use crate::{
         fetcher::TransactionFetcherOptions, tailer::Tailer,
         transaction_processor::TransactionProcessor,
     },
-    processors::{
-        coin_processor::CoinTransactionProcessor, default_processor::DefaultTransactionProcessor,
-        marketplace_processor::MarketplaceProcessor, token_processor::TokenTransactionProcessor,
-        Processor,
-    },
+    processors::{marketplace_processor::MarketplaceProcessor, Processor},
 };
 
 use aptos_api::context::Context;

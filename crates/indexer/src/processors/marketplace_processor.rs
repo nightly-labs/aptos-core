@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 
 use aptos_api_types::{Transaction, TransactionPayload, WriteSetChange};
-use aptos_types::transaction::TransactionPayload;
 use async_trait::async_trait;
 use field_count::FieldCount;
 
@@ -13,12 +12,9 @@ use crate::{
         errors::TransactionProcessingError, processing_result::ProcessingResult,
         transaction_processor::TransactionProcessor,
     },
-    models::{
-        marketplace_models::{
-            bids::MarketplaceBid, collections::MarketplaceCollection, offers::MarketplaceOffer,
-            orders::MarketplaceOrder,
-        },
-        write_set_changes::WriteSetChange,
+    models::marketplace_models::{
+        bids::MarketplaceBid, collections::MarketplaceCollection, offers::MarketplaceOffer,
+        orders::MarketplaceOrder,
     },
     schema,
     util::parse_timestamp,
@@ -69,10 +65,10 @@ fn insert_to_db(
         .build_transaction()
         .read_write()
         .run::<_, Error, _>(|pg_conn| {
-            insert_collections(pg_conn, &collections);
-            insert_offers(pg_conn, &offers);
-            insert_orders(pg_conn, &orders);
-            insert_bids(pg_conn, &bids);
+            insert_collections(pg_conn, &collections)?;
+            insert_offers(pg_conn, &offers)?;
+            insert_orders(pg_conn, &orders)?;
+            insert_bids(pg_conn, &bids)?;
             Ok(())
         }) {
         Ok(_) => Ok(()),
@@ -85,10 +81,10 @@ fn insert_to_db(
                 let orders = clean_data_for_db(orders, true);
                 let bids = clean_data_for_db(bids, true);
 
-                insert_collections(pg_conn, &collections);
-                insert_offers(pg_conn, &offers);
-                insert_orders(pg_conn, &orders);
-                insert_bids(pg_conn, &bids);
+                insert_collections(pg_conn, &collections)?;
+                insert_offers(pg_conn, &offers)?;
+                insert_orders(pg_conn, &orders)?;
+                insert_bids(pg_conn, &bids)?;
                 Ok(())
             }),
     }
@@ -180,68 +176,102 @@ impl TransactionProcessor for MarketplaceProcessor {
         for txn in &transactions {
             let maybe_user_transaction_details = match txn {
                 Transaction::UserTransaction(user_txn) => Some((
-                    user_txn.info,
-                    user_txn.request,
-                    user_txn.events,
-                    parse_timestamp(user_txn.timestamp.0, user_txn.info.version.0),
+                    &user_txn.info,
+                    &user_txn.request,
+                    &user_txn.events,
+                    parse_timestamp(
+                        user_txn.timestamp.0,
+                        user_txn.info.version.0.try_into().unwrap(),
+                    ),
                 )),
                 _ => None,
             };
 
             if let Some(user_transaction_details) = maybe_user_transaction_details {
-                let txn_version = user_transaction_details.0.version.0;
+                let txn_version = user_transaction_details.0.version.0 as i64;
                 let txn_timestamp = user_transaction_details.3;
-                let payload = user_transaction_details.1.payload;
+                let payload = &user_transaction_details.1.payload;
 
                 for event in user_transaction_details.2 {
                     let event_type = event.typ.to_string();
-                    let maybe_collection = MarketplaceCollection::from_event(
-                        &event_type,
-                        &event,
-                        txn_version,
-                        txn_timestamp,
-                    );
+                    let maybe_collection =
+                        MarketplaceCollection::from_event(&event_type, &event, txn_version);
 
                     if maybe_collection.is_some() {
                         all_collections.push(maybe_collection.unwrap())
                     }
                 }
 
-                let (maybe_offer, maybe_order, maybe_bid) =
-                    if let TransactionPayload::EntryFunctionPayload(entry_transaction_payload) =
-                        payload
-                    {
-                        for writeset in user_transaction_details.0.changes {
+                if let TransactionPayload::EntryFunctionPayload(entry_transaction_payload) = payload
+                {
+                    for writeset in &user_transaction_details.0.changes {
+                        let (maybe_offer, maybe_order, maybe_bid) =
                             if let WriteSetChange::WriteTableItem(table_item) = writeset {
                                 (
                                     MarketplaceOffer::from_table_item(
                                         &table_item,
-                                        entry_transaction_payload,
+                                        entry_transaction_payload.clone(),
                                         txn_version,
                                         txn_timestamp,
                                     )
                                     .unwrap(),
                                     MarketplaceOrder::from_table_item(
                                         &table_item,
-                                        entry_transaction_payload,
+                                        entry_transaction_payload.clone(),
                                         txn_version,
                                         txn_timestamp,
                                     )
                                     .unwrap(),
                                     MarketplaceBid::from_table_item(
                                         &table_item,
-                                        entry_transaction_payload,
+                                        entry_transaction_payload.clone(),
                                         txn_version,
                                         txn_timestamp,
                                     )
                                     .unwrap(),
                                 )
-                            }
+                            } else {
+                                (None, None, None)
+                            };
+
+                        if let Some(offer) = maybe_offer {
+                            all_offers.push(offer);
                         }
-                    } else {
-                        (None, None, None)
-                    };
+
+                        if let Some(order) = maybe_order {
+                            all_orders.push(order);
+                        }
+
+                        if let Some(bid) = maybe_bid {
+                            all_bids.push(bid);
+                        }
+                    }
+                }
             }
+        }
+
+        let tx_result = insert_to_db(
+            &mut conn,
+            self.name(),
+            start_version,
+            end_version,
+            all_collections,
+            all_offers,
+            all_orders,
+            all_bids,
+        );
+        match tx_result {
+            Ok(_) => Ok(ProcessingResult::new(
+                self.name(),
+                start_version,
+                end_version,
+            )),
+            Err(err) => Err(TransactionProcessingError::TransactionCommitError((
+                anyhow::Error::from(err),
+                start_version,
+                end_version,
+                self.name(),
+            ))),
         }
     }
 

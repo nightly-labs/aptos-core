@@ -1,0 +1,18 @@
+{
+	"folders": [
+		{
+			"name": "aptos-core",
+			"path": "../../../../.."
+		}
+	],
+	"settings": {
+		"cSpell.words": [
+			"bigdecimal",
+			"bytecode",
+			"Bytecode",
+			"curr",
+			"jsonprc",
+			"Unignore"
+		]
+	}
+}

@@ -29,7 +29,7 @@ impl MarketplaceOrder {
         txn_version: i64,
         txn_timestamp: chrono::NaiveDateTime,
     ) -> Result<Option<Self>> {
-        let table_item_data = &table_item.data.unwrap();
+        let table_item_data = table_item.data.as_ref().unwrap();
         let maybe_order = match MarketplaceWriteSet::from_table_item_type(
             table_item_data.key_type.as_str(),
             &table_item_data.value,
@@ -40,7 +40,7 @@ impl MarketplaceOrder {
         };
         let maybe_place_order_payload = match MarketplacePayload::from_function_name(
             &payload.function.to_string(),
-            &payload.arguments,
+            payload.arguments,
             txn_version,
         )
         .unwrap()
