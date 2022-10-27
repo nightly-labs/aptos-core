@@ -16,72 +16,13 @@ diesel::table! {
 }
 
 diesel::table! {
-    coin_activities (transaction_version, event_account_address, event_creation_number, event_sequence_number) {
-        transaction_version -> Int8,
-        event_account_address -> Varchar,
-        event_creation_number -> Int8,
-        event_sequence_number -> Int8,
-        owner_address -> Varchar,
-        coin_type -> Varchar,
-        amount -> Numeric,
-        activity_type -> Varchar,
-        is_gas_fee -> Bool,
-        is_transaction_success -> Bool,
-        entry_function_id_str -> Nullable<Varchar>,
-        block_height -> Int8,
-        transaction_timestamp -> Timestamp,
-        inserted_at -> Timestamp,
-    }
-}
-
-diesel::table! {
-    coin_balances (transaction_version, owner_address, coin_type_hash) {
-        transaction_version -> Int8,
-        owner_address -> Varchar,
-        coin_type_hash -> Varchar,
-        coin_type -> Varchar,
-        amount -> Numeric,
-        transaction_timestamp -> Timestamp,
-        inserted_at -> Timestamp,
-    }
-}
-
-diesel::table! {
-    coin_infos (coin_type_hash) {
-        coin_type_hash -> Varchar,
-        coin_type -> Varchar,
-        transaction_version_created -> Int8,
+    collection_datas (creator_address, collection_name_hash, transaction_version) {
         creator_address -> Varchar,
-        name -> Varchar,
-        symbol -> Varchar,
-        decimals -> Int4,
-        transaction_created_timestamp -> Timestamp,
-        inserted_at -> Timestamp,
-        supply_aggregator_table_handle -> Nullable<Varchar>,
-        supply_aggregator_table_key -> Nullable<Text>,
-    }
-}
-
-diesel::table! {
-    coin_supply (transaction_version, coin_type_hash) {
-        transaction_version -> Int8,
-        coin_type_hash -> Varchar,
-        coin_type -> Varchar,
-        supply -> Numeric,
-        transaction_timestamp -> Timestamp,
-        transaction_epoch -> Int8,
-        inserted_at -> Timestamp,
-    }
-}
-
-diesel::table! {
-    collection_datas (collection_data_id_hash, transaction_version) {
-        collection_data_id_hash -> Varchar,
-        transaction_version -> Int8,
-        creator_address -> Varchar,
-        collection_name -> Varchar,
+        collection_name_hash -> Varchar,
+        collection_name -> Text,
         description -> Text,
-        metadata_uri -> Varchar,
+        transaction_version -> Int8,
+        metadata_uri -> Text,
         supply -> Numeric,
         maximum -> Numeric,
         maximum_mutable -> Bool,
@@ -132,6 +73,15 @@ diesel::table! {
         inserted_at -> Timestamp,
         table_handle -> Varchar,
         last_transaction_timestamp -> Timestamp,
+    }
+}
+
+diesel::table! {
+    current_staking_pool_voter (staking_pool_address) {
+        staking_pool_address -> Varchar,
+        voter_address -> Varchar,
+        last_transaction_version -> Int8,
+        inserted_at -> Timestamp,
     }
 }
 
@@ -306,6 +256,14 @@ diesel::table! {
 }
 
 diesel::table! {
+    processor_status (processor) {
+        processor -> Varchar,
+        last_success_version -> Int8,
+        last_updated -> Timestamp,
+    }
+}
+
+diesel::table! {
     processor_statuses (name, version) {
         name -> Varchar,
         version -> Int8,
@@ -380,16 +338,17 @@ diesel::table! {
 }
 
 diesel::table! {
-    token_datas (token_data_id_hash, transaction_version) {
-        token_data_id_hash -> Varchar,
-        transaction_version -> Int8,
+    token_datas (creator_address, collection_name_hash, name_hash, transaction_version) {
         creator_address -> Varchar,
-        collection_name -> Varchar,
-        name -> Varchar,
+        collection_name_hash -> Varchar,
+        name_hash -> Varchar,
+        collection_name -> Text,
+        name -> Text,
+        transaction_version -> Int8,
         maximum -> Numeric,
         supply -> Numeric,
         largest_property_version -> Numeric,
-        metadata_uri -> Varchar,
+        metadata_uri -> Text,
         payee_address -> Varchar,
         royalty_points_numerator -> Numeric,
         royalty_points_denominator -> Numeric,
@@ -407,16 +366,17 @@ diesel::table! {
 }
 
 diesel::table! {
-    token_ownerships (token_data_id_hash, property_version, transaction_version, table_handle) {
-        token_data_id_hash -> Varchar,
+    token_ownerships (creator_address, collection_name_hash, name_hash, property_version, transaction_version, table_handle) {
+        creator_address -> Varchar,
+        collection_name_hash -> Varchar,
+        name_hash -> Varchar,
+        collection_name -> Text,
+        name -> Text,
         property_version -> Numeric,
         transaction_version -> Int8,
-        table_handle -> Varchar,
-        creator_address -> Varchar,
-        collection_name -> Varchar,
-        name -> Varchar,
         owner_address -> Nullable<Varchar>,
         amount -> Numeric,
+        table_handle -> Varchar,
         table_type -> Nullable<Text>,
         inserted_at -> Timestamp,
         collection_data_id_hash -> Varchar,
@@ -425,13 +385,14 @@ diesel::table! {
 }
 
 diesel::table! {
-    tokens (token_data_id_hash, property_version, transaction_version) {
-        token_data_id_hash -> Varchar,
+    tokens (creator_address, collection_name_hash, name_hash, property_version, transaction_version) {
+        creator_address -> Varchar,
+        collection_name_hash -> Varchar,
+        name_hash -> Varchar,
+        collection_name -> Text,
+        name -> Text,
         property_version -> Numeric,
         transaction_version -> Int8,
-        creator_address -> Varchar,
-        collection_name -> Varchar,
-        name -> Varchar,
         token_properties -> Jsonb,
         inserted_at -> Timestamp,
         collection_data_id_hash -> Varchar,
@@ -501,6 +462,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     current_ans_lookup,
     current_coin_balances,
     current_collection_datas,
+    current_staking_pool_voter,
     current_token_datas,
     current_token_ownerships,
     current_token_pending_claims,
@@ -513,6 +475,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     marketplace_orders,
     move_modules,
     move_resources,
+    processor_status,
     processor_statuses,
     signatures,
     table_items,
